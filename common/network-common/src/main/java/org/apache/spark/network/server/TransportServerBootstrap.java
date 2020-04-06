@@ -32,5 +32,6 @@ public interface TransportServerBootstrap {
    * @param rpcHandler The RPC handler for the server.
    * @return The RPC handler to use for the channel.
    */
+  //服务端的RPCHandler进行处理，接收客户端的请求
   RpcHandler doBootstrap(Channel channel, RpcHandler rpcHandler);
 }

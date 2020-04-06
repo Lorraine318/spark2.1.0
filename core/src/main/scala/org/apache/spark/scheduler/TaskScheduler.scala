@@ -30,6 +30,7 @@ import org.apache.spark.util.AccumulatorV2
  * them, retrying if there are failures, and mitigating stragglers. They return events to the
  * DAGScheduler.
  */
+//也可以看成是任务调度的客户按
 private[spark] trait TaskScheduler {
 
   private val appId = "spark-application-" + System.currentTimeMillis

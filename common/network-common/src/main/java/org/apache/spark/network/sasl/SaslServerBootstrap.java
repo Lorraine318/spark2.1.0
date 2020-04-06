@@ -42,7 +42,9 @@ public class SaslServerBootstrap implements TransportServerBootstrap {
    * Wrap the given application handler in a SaslRpcHandler that will handle the initial SASL
    * negotiation.
    */
+  @Override
   public RpcHandler doBootstrap(Channel channel, RpcHandler rpcHandler) {
+
     return new SaslRpcHandler(conf, channel, rpcHandler, secretKeyHolder);
   }
 

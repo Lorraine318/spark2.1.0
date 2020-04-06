@@ -70,7 +70,9 @@ import org.apache.spark.status.api.v1.{StackTrace, ThreadStackTrace}
 private[spark] case class CallSite(shortForm: String, longForm: String)
 
 private[spark] object CallSite {
+  //保存着简短信息 线程栈中最靠近栈顶的用户定义的类及最靠近栈底的scala或者spark核心类信息
   val SHORT_FORM = "callSite.short"
+  //保存着完整信息 线程栈中最靠近栈顶的用户定义的类及最靠近栈底的scala或者spark核心类信息
   val LONG_FORM = "callSite.long"
   val empty = CallSite("", "")
 }

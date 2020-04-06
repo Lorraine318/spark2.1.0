@@ -24,7 +24,7 @@ import com.codahale.metrics.{ConsoleReporter, MetricRegistry}
 
 import org.apache.spark.SecurityManager
 import org.apache.spark.metrics.MetricsSystem
-
+//借助metrics提供的ConsoleReporter的api,将度量输出到system.out
 private[spark] class ConsoleSink(val property: Properties, val registry: MetricRegistry,
     securityMgr: SecurityManager) extends Sink {
   val CONSOLE_DEFAULT_PERIOD = 10

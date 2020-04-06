@@ -26,6 +26,7 @@ import com.google.common.primitives.Ints;
  * A central location that tracks all the settings we expose to users.
  * <p>
  * spark通常使用SparkTransportConf 的 fromSparkConf方法来构建TransportConf
+ *
  */
 public class TransportConf {
 

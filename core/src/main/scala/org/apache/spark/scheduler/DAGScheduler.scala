@@ -112,6 +112,7 @@ import org.apache.spark.util._
  *  - When adding a new data structure, update `DAGSchedulerSuite.assertDataStructuresEmpty` to
  *    include the new structure. This will help to catch memory leaks.
  */
+//主要用于在任务正式交给TaskSchedulerImpl提交之前做一些准备工作。包括胡藏剑job.将Dag中的RDD划分到不同的Stage，提交Stage
 private[spark] class DAGScheduler(
     private[scheduler] val sc: SparkContext,
     private[scheduler] val taskScheduler: TaskScheduler,

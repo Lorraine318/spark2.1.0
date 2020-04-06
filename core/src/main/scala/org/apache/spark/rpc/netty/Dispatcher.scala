@@ -36,27 +36,26 @@ import org.apache.spark.util.ThreadUtils
  * @param numUsableCores Number of CPU cores allocated to the process, for sizing the thread pool.
  *                       If 0, will consider the available CPUs on the host.
  */
+//可以将RPC消息路由到要对消息处理的RpcEndpoint端点上
 private[netty] class Dispatcher(nettyEnv: NettyRpcEnv, numUsableCores: Int) extends Logging {
 
+  //inbox与 RpcEndpoint,NettyRpcEndpointRef通过endpointData进行关联  Rpc端点数据，他包括了RpcEndpoint,nettyRpcEndpointRef及Inbox等属于同一个端点的实例，
   private class EndpointData(
       val name: String,
-      val endpoint: RpcEndpoint,
-      val ref: NettyRpcEndpointRef) {
-    val inbox = new Inbox(ref, endpoint)
+      val endpoint: RpcEndpoint, //RPC端点
+      val ref: NettyRpcEndpointRef) {  //RPC端点引用  “spark://host:port/name”所谓引用也就是这种格式的地址  host为端点所在RPC服务的主机IP ， port是端点所在RPC服务的端口
+    val inbox = new Inbox(ref, endpoint)  //消息，所有类型的RPC消息都继承自InboxMessage
   }
-
+  //端点实例名称与端点数据EndpointData之间映射关系的缓存，可以使用端点名称从中快速获取删除EndpointData
   private val endpoints: ConcurrentMap[String, EndpointData] =
     new ConcurrentHashMap[String, EndpointData]
+  //端点实例RpcEndpoint与端点实例引用RpcEndpointRef之间映射关系的缓存。，可以从中根据端点实例快速获取删除端点实例引用了
   private val endpointRefs: ConcurrentMap[RpcEndpoint, RpcEndpointRef] =
     new ConcurrentHashMap[RpcEndpoint, RpcEndpointRef]
 
-  // Track the receivers whose inboxes may contain messages.
+  // 存储端点数据EndpointData的阻塞队列
   private val receivers = new LinkedBlockingQueue[EndpointData]
-
-  /**
-   * True if the dispatcher has been stopped. Once stopped, all messages posted will be bounced
-   * immediately.
-   */
+  //Dispatcher是否停止的状态
   @GuardedBy("this")
   private var stopped = false
 

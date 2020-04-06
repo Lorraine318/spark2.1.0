@@ -36,6 +36,7 @@ import org.apache.spark.util.Utils
 /**
  * Top level user interface for a Spark application.
  */
+//在SparkContext的初始化过程中，会创建SparkUI
 private[spark] class SparkUI private (
     val store: AppStatusStore,
     val sc: Option[SparkContext],
@@ -49,23 +50,25 @@ private[spark] class SparkUI private (
     conf, basePath, "SparkUI")
   with Logging
   with UIRoot {
-
+  //标记当前SparkUI能否提供杀死Stage或者JOb的连接
   val killEnabled = sc.map(_.conf.getBoolean("spark.ui.killEnabled", true)).getOrElse(false)
-
+  //当前的应用ID
   var appId: String = _
 
   private var streamingJobProgressListener: Option[SparkListener] = None
 
   /** Initialize all components of the server. */
   def initialize(): Unit = {
-    val jobsTab = new JobsTab(this, store)
+    val jobsTab = new JobsTab(this, store)  //标签页
     attachTab(jobsTab)
-    val stagesTab = new StagesTab(this, store)
+    val stagesTab = new StagesTab(this, store)  //标签页
     attachTab(stagesTab)
-    attachTab(new StorageTab(this, store))
-    attachTab(new EnvironmentTab(this, store))
-    attachTab(new ExecutorsTab(this))
+    attachTab(new StorageTab(this, store))  //标签页
+    attachTab(new EnvironmentTab(this, store))    //标签页
+    attachTab(new ExecutorsTab(this))   //标签页
+    //创建对静态目录org/apache/spark/ui/static提供文件服务的ServletContextHandler
     addStaticHandler(SparkUI.STATIC_RESOURCE_DIR)
+    //通过JettyUtils的createRedirectHandler方法来创建几个对用户对源路径的请求重定向到目标路径的ServletContextHandler
     attachHandler(createRedirectHandler("/", "/jobs/", basePath = basePath))
     attachHandler(ApiRootResource.getServletHandler(this))
 
@@ -142,6 +145,7 @@ private[spark] class SparkUI private (
 
 }
 
+//所有的标签页都继承了SparkUITab
 private[spark] abstract class SparkUITab(parent: SparkUI, prefix: String)
   extends WebUITab(parent, prefix) {
 

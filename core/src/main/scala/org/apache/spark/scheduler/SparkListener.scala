@@ -33,6 +33,7 @@ import org.apache.spark.ui.SparkUI
 
 @DeveloperApi
 @JsonTypeInfo(use = JsonTypeInfo.Id.CLASS, include = JsonTypeInfo.As.PROPERTY, property = "Event")
+//spark监听器 的事件来源主要包括：DAGScheduler, SparkContext, DriverEndpoint, BlockManagerMasterEndpoint,  LocalSchedulerBackend
 trait SparkListenerEvent {
   /* Whether output this event to the event log */
   protected[spark] def logEvent: Boolean = true
@@ -57,21 +58,21 @@ case class SparkListenerSpeculativeTaskSubmitted(stageId: Int) extends SparkList
 
 @DeveloperApi
 case class SparkListenerTaskEnd(
-    stageId: Int,
-    stageAttemptId: Int,
-    taskType: String,
-    reason: TaskEndReason,
-    taskInfo: TaskInfo,
-    // may be null if the task has failed
-    @Nullable taskMetrics: TaskMetrics)
+                                 stageId: Int,
+                                 stageAttemptId: Int,
+                                 taskType: String,
+                                 reason: TaskEndReason,
+                                 taskInfo: TaskInfo,
+                                 // may be null if the task has failed
+                                 @Nullable taskMetrics: TaskMetrics)
   extends SparkListenerEvent
 
 @DeveloperApi
 case class SparkListenerJobStart(
-    jobId: Int,
-    time: Long,
-    stageInfos: Seq[StageInfo],
-    properties: Properties = null)
+                                  jobId: Int,
+                                  time: Long,
+                                  stageInfos: Seq[StageInfo],
+                                  properties: Properties = null)
   extends SparkListenerEvent {
   // Note: this is here for backwards-compatibility with older versions of this event which
   // only stored stageIds and not StageInfos:
@@ -80,9 +81,9 @@ case class SparkListenerJobStart(
 
 @DeveloperApi
 case class SparkListenerJobEnd(
-    jobId: Int,
-    time: Long,
-    jobResult: JobResult)
+                                jobId: Int,
+                                time: Long,
+                                jobResult: JobResult)
   extends SparkListenerEvent
 
 @DeveloperApi
@@ -91,11 +92,11 @@ case class SparkListenerEnvironmentUpdate(environmentDetails: Map[String, Seq[(S
 
 @DeveloperApi
 case class SparkListenerBlockManagerAdded(
-    time: Long,
-    blockManagerId: BlockManagerId,
-    maxMem: Long,
-    maxOnHeapMem: Option[Long] = None,
-    maxOffHeapMem: Option[Long] = None) extends SparkListenerEvent {
+                                           time: Long,
+                                           blockManagerId: BlockManagerId,
+                                           maxMem: Long,
+                                           maxOnHeapMem: Option[Long] = None,
+                                           maxOffHeapMem: Option[Long] = None) extends SparkListenerEvent {
 }
 
 @DeveloperApi
@@ -115,27 +116,27 @@ case class SparkListenerExecutorRemoved(time: Long, executorId: String, reason: 
 
 @DeveloperApi
 case class SparkListenerExecutorBlacklisted(
-    time: Long,
-    executorId: String,
-    taskFailures: Int)
+                                             time: Long,
+                                             executorId: String,
+                                             taskFailures: Int)
   extends SparkListenerEvent
 
 @DeveloperApi
 case class SparkListenerExecutorBlacklistedForStage(
-    time: Long,
-    executorId: String,
-    taskFailures: Int,
-    stageId: Int,
-    stageAttemptId: Int)
+                                                     time: Long,
+                                                     executorId: String,
+                                                     taskFailures: Int,
+                                                     stageId: Int,
+                                                     stageAttemptId: Int)
   extends SparkListenerEvent
 
 @DeveloperApi
 case class SparkListenerNodeBlacklistedForStage(
-    time: Long,
-    hostId: String,
-    executorFailures: Int,
-    stageId: Int,
-    stageAttemptId: Int)
+                                                 time: Long,
+                                                 hostId: String,
+                                                 executorFailures: Int,
+                                                 stageId: Int,
+                                                 stageAttemptId: Int)
   extends SparkListenerEvent
 
 @DeveloperApi
@@ -144,9 +145,9 @@ case class SparkListenerExecutorUnblacklisted(time: Long, executorId: String)
 
 @DeveloperApi
 case class SparkListenerNodeBlacklisted(
-    time: Long,
-    hostId: String,
-    executorFailures: Int)
+                                         time: Long,
+                                         hostId: String,
+                                         executorFailures: Int)
   extends SparkListenerEvent
 
 @DeveloperApi
@@ -157,236 +158,232 @@ case class SparkListenerNodeUnblacklisted(time: Long, hostId: String)
 case class SparkListenerBlockUpdated(blockUpdatedInfo: BlockUpdatedInfo) extends SparkListenerEvent
 
 /**
- * Periodic updates from executors.
- * @param execId executor id
- * @param accumUpdates sequence of (taskId, stageId, stageAttemptId, accumUpdates)
- */
+  * Periodic updates from executors.
+  *
+  * @param execId       executor id
+  * @param accumUpdates sequence of (taskId, stageId, stageAttemptId, accumUpdates)
+  */
 @DeveloperApi
 case class SparkListenerExecutorMetricsUpdate(
-    execId: String,
-    accumUpdates: Seq[(Long, Int, Int, Seq[AccumulableInfo])])
+                                               execId: String,
+                                               accumUpdates: Seq[(Long, Int, Int, Seq[AccumulableInfo])])
   extends SparkListenerEvent
 
 @DeveloperApi
 case class SparkListenerApplicationStart(
-    appName: String,
-    appId: Option[String],
-    time: Long,
-    sparkUser: String,
-    appAttemptId: Option[String],
-    driverLogs: Option[Map[String, String]] = None) extends SparkListenerEvent
+                                          appName: String,
+                                          appId: Option[String],
+                                          time: Long,
+                                          sparkUser: String,
+                                          appAttemptId: Option[String],
+                                          driverLogs: Option[Map[String, String]] = None) extends SparkListenerEvent
 
 @DeveloperApi
 case class SparkListenerApplicationEnd(time: Long) extends SparkListenerEvent
 
 /**
- * An internal class that describes the metadata of an event log.
- */
+  * An internal class that describes the metadata of an event log.
+  */
 @DeveloperApi
 case class SparkListenerLogStart(sparkVersion: String) extends SparkListenerEvent
 
 /**
- * Interface for listening to events from the Spark scheduler. Most applications should probably
- * extend SparkListener or SparkFirehoseListener directly, rather than implementing this class.
- *
- * Note that this is an internal interface which might change in different Spark releases.
- */
+  * Interface for listening to events from the Spark scheduler. Most applications should probably
+  * extend SparkListener or SparkFirehoseListener directly, rather than implementing this class.
+  *
+  * Note that this is an internal interface which might change in different Spark releases.
+  */
+//定义了所有SparkListener监听器应该遵守的接口规范
 private[spark] trait SparkListenerInterface {
 
-  /**
-   * Called when a stage completes successfully or fails, with information on the completed stage.
-   */
+  //当匹配到SparkListenerStageCompleted事件类型时执行此方法
   def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit
 
-  /**
-   * Called when a stage is submitted
-   */
+  //当匹配到 SparkListenerStageSubmitted事件类型时，执行此方法
   def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit
 
   /**
-   * Called when a task starts
-   */
+    * Called when a task starts
+    */
   def onTaskStart(taskStart: SparkListenerTaskStart): Unit
 
   /**
-   * Called when a task begins remotely fetching its result (will not be called for tasks that do
-   * not need to fetch the result remotely).
-   */
+    * Called when a task begins remotely fetching its result (will not be called for tasks that do
+    * not need to fetch the result remotely).
+    */
   def onTaskGettingResult(taskGettingResult: SparkListenerTaskGettingResult): Unit
 
   /**
-   * Called when a task ends
-   */
+    * Called when a task ends
+    */
   def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit
 
   /**
-   * Called when a job starts
-   */
+    * Called when a job starts
+    */
   def onJobStart(jobStart: SparkListenerJobStart): Unit
 
   /**
-   * Called when a job ends
-   */
+    * Called when a job ends
+    */
   def onJobEnd(jobEnd: SparkListenerJobEnd): Unit
 
   /**
-   * Called when environment properties have been updated
-   */
+    * Called when environment properties have been updated
+    */
   def onEnvironmentUpdate(environmentUpdate: SparkListenerEnvironmentUpdate): Unit
 
   /**
-   * Called when a new block manager has joined
-   */
+    * Called when a new block manager has joined
+    */
   def onBlockManagerAdded(blockManagerAdded: SparkListenerBlockManagerAdded): Unit
 
   /**
-   * Called when an existing block manager has been removed
-   */
+    * Called when an existing block manager has been removed
+    */
   def onBlockManagerRemoved(blockManagerRemoved: SparkListenerBlockManagerRemoved): Unit
 
   /**
-   * Called when an RDD is manually unpersisted by the application
-   */
+    * Called when an RDD is manually unpersisted by the application
+    */
   def onUnpersistRDD(unpersistRDD: SparkListenerUnpersistRDD): Unit
 
   /**
-   * Called when the application starts
-   */
+    * Called when the application starts
+    */
   def onApplicationStart(applicationStart: SparkListenerApplicationStart): Unit
 
   /**
-   * Called when the application ends
-   */
+    * Called when the application ends
+    */
   def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd): Unit
 
   /**
-   * Called when the driver receives task metrics from an executor in a heartbeat.
-   */
+    * Called when the driver receives task metrics from an executor in a heartbeat.
+    */
   def onExecutorMetricsUpdate(executorMetricsUpdate: SparkListenerExecutorMetricsUpdate): Unit
 
   /**
-   * Called when the driver registers a new executor.
-   */
+    * Called when the driver registers a new executor.
+    */
   def onExecutorAdded(executorAdded: SparkListenerExecutorAdded): Unit
 
   /**
-   * Called when the driver removes an executor.
-   */
+    * Called when the driver removes an executor.
+    */
   def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit
 
   /**
-   * Called when the driver blacklists an executor for a Spark application.
-   */
+    * Called when the driver blacklists an executor for a Spark application.
+    */
   def onExecutorBlacklisted(executorBlacklisted: SparkListenerExecutorBlacklisted): Unit
 
   /**
-   * Called when the driver blacklists an executor for a stage.
-   */
+    * Called when the driver blacklists an executor for a stage.
+    */
   def onExecutorBlacklistedForStage(
-      executorBlacklistedForStage: SparkListenerExecutorBlacklistedForStage): Unit
+                                     executorBlacklistedForStage: SparkListenerExecutorBlacklistedForStage): Unit
 
   /**
-   * Called when the driver blacklists a node for a stage.
-   */
+    * Called when the driver blacklists a node for a stage.
+    */
   def onNodeBlacklistedForStage(nodeBlacklistedForStage: SparkListenerNodeBlacklistedForStage): Unit
 
   /**
-   * Called when the driver re-enables a previously blacklisted executor.
-   */
+    * Called when the driver re-enables a previously blacklisted executor.
+    */
   def onExecutorUnblacklisted(executorUnblacklisted: SparkListenerExecutorUnblacklisted): Unit
 
   /**
-   * Called when the driver blacklists a node for a Spark application.
-   */
+    * Called when the driver blacklists a node for a Spark application.
+    */
   def onNodeBlacklisted(nodeBlacklisted: SparkListenerNodeBlacklisted): Unit
 
   /**
-   * Called when the driver re-enables a previously blacklisted node.
-   */
+    * Called when the driver re-enables a previously blacklisted node.
+    */
   def onNodeUnblacklisted(nodeUnblacklisted: SparkListenerNodeUnblacklisted): Unit
 
   /**
-   * Called when the driver receives a block update info.
-   */
+    * Called when the driver receives a block update info.
+    */
   def onBlockUpdated(blockUpdated: SparkListenerBlockUpdated): Unit
 
   /**
-   * Called when a speculative task is submitted
-   */
+    * Called when a speculative task is submitted
+    */
   def onSpeculativeTaskSubmitted(speculativeTask: SparkListenerSpeculativeTaskSubmitted): Unit
 
-  /**
-   * Called when other events like SQL-specific events are posted.
-   */
+  //当在SparkListenerBus的doPostEvent中没有匹配到的事件，都执行此方法
   def onOtherEvent(event: SparkListenerEvent): Unit
 }
 
 
 /**
- * :: DeveloperApi ::
- * A default implementation for `SparkListenerInterface` that has no-op implementations for
- * all callbacks.
- *
- * Note that this is an internal interface which might change in different Spark releases.
- */
+  * :: DeveloperApi ::
+  * A default implementation for `SparkListenerInterface` that has no-op implementations for
+  * all callbacks.
+  *
+  * Note that this is an internal interface which might change in different Spark releases.
+  */
 @DeveloperApi
 abstract class SparkListener extends SparkListenerInterface {
-  override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit = { }
+  override def onStageCompleted(stageCompleted: SparkListenerStageCompleted): Unit = {}
 
-  override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit = { }
+  override def onStageSubmitted(stageSubmitted: SparkListenerStageSubmitted): Unit = {}
 
-  override def onTaskStart(taskStart: SparkListenerTaskStart): Unit = { }
+  override def onTaskStart(taskStart: SparkListenerTaskStart): Unit = {}
 
-  override def onTaskGettingResult(taskGettingResult: SparkListenerTaskGettingResult): Unit = { }
+  override def onTaskGettingResult(taskGettingResult: SparkListenerTaskGettingResult): Unit = {}
 
-  override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = { }
+  override def onTaskEnd(taskEnd: SparkListenerTaskEnd): Unit = {}
 
-  override def onJobStart(jobStart: SparkListenerJobStart): Unit = { }
+  override def onJobStart(jobStart: SparkListenerJobStart): Unit = {}
 
-  override def onJobEnd(jobEnd: SparkListenerJobEnd): Unit = { }
+  override def onJobEnd(jobEnd: SparkListenerJobEnd): Unit = {}
 
-  override def onEnvironmentUpdate(environmentUpdate: SparkListenerEnvironmentUpdate): Unit = { }
+  override def onEnvironmentUpdate(environmentUpdate: SparkListenerEnvironmentUpdate): Unit = {}
 
-  override def onBlockManagerAdded(blockManagerAdded: SparkListenerBlockManagerAdded): Unit = { }
+  override def onBlockManagerAdded(blockManagerAdded: SparkListenerBlockManagerAdded): Unit = {}
 
   override def onBlockManagerRemoved(
-      blockManagerRemoved: SparkListenerBlockManagerRemoved): Unit = { }
+                                      blockManagerRemoved: SparkListenerBlockManagerRemoved): Unit = {}
 
-  override def onUnpersistRDD(unpersistRDD: SparkListenerUnpersistRDD): Unit = { }
+  override def onUnpersistRDD(unpersistRDD: SparkListenerUnpersistRDD): Unit = {}
 
-  override def onApplicationStart(applicationStart: SparkListenerApplicationStart): Unit = { }
+  override def onApplicationStart(applicationStart: SparkListenerApplicationStart): Unit = {}
 
-  override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd): Unit = { }
+  override def onApplicationEnd(applicationEnd: SparkListenerApplicationEnd): Unit = {}
 
   override def onExecutorMetricsUpdate(
-      executorMetricsUpdate: SparkListenerExecutorMetricsUpdate): Unit = { }
+                                        executorMetricsUpdate: SparkListenerExecutorMetricsUpdate): Unit = {}
 
-  override def onExecutorAdded(executorAdded: SparkListenerExecutorAdded): Unit = { }
+  override def onExecutorAdded(executorAdded: SparkListenerExecutorAdded): Unit = {}
 
-  override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = { }
+  override def onExecutorRemoved(executorRemoved: SparkListenerExecutorRemoved): Unit = {}
 
   override def onExecutorBlacklisted(
-      executorBlacklisted: SparkListenerExecutorBlacklisted): Unit = { }
+                                      executorBlacklisted: SparkListenerExecutorBlacklisted): Unit = {}
 
   def onExecutorBlacklistedForStage(
-      executorBlacklistedForStage: SparkListenerExecutorBlacklistedForStage): Unit = { }
+                                     executorBlacklistedForStage: SparkListenerExecutorBlacklistedForStage): Unit = {}
 
   def onNodeBlacklistedForStage(
-      nodeBlacklistedForStage: SparkListenerNodeBlacklistedForStage): Unit = { }
+                                 nodeBlacklistedForStage: SparkListenerNodeBlacklistedForStage): Unit = {}
 
   override def onExecutorUnblacklisted(
-      executorUnblacklisted: SparkListenerExecutorUnblacklisted): Unit = { }
+                                        executorUnblacklisted: SparkListenerExecutorUnblacklisted): Unit = {}
 
   override def onNodeBlacklisted(
-      nodeBlacklisted: SparkListenerNodeBlacklisted): Unit = { }
+                                  nodeBlacklisted: SparkListenerNodeBlacklisted): Unit = {}
 
   override def onNodeUnblacklisted(
-      nodeUnblacklisted: SparkListenerNodeUnblacklisted): Unit = { }
+                                    nodeUnblacklisted: SparkListenerNodeUnblacklisted): Unit = {}
 
-  override def onBlockUpdated(blockUpdated: SparkListenerBlockUpdated): Unit = { }
+  override def onBlockUpdated(blockUpdated: SparkListenerBlockUpdated): Unit = {}
 
   override def onSpeculativeTaskSubmitted(
-      speculativeTask: SparkListenerSpeculativeTaskSubmitted): Unit = { }
+                                           speculativeTask: SparkListenerSpeculativeTaskSubmitted): Unit = {}
 
-  override def onOtherEvent(event: SparkListenerEvent): Unit = { }
+  override def onOtherEvent(event: SparkListenerEvent): Unit = {}
 }

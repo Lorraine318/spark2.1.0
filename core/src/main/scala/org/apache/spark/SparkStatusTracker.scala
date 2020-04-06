@@ -36,6 +36,7 @@ import org.apache.spark.status.api.v1.StageStatus
  *
  * NOTE: this class's constructor should be considered private and may be subject to change.
  */
+//负责对job和Stage的监控
 class SparkStatusTracker private[spark] (sc: SparkContext, store: AppStatusStore) {
 
   /**

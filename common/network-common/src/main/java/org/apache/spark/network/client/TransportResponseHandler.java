@@ -40,232 +40,258 @@ import org.apache.spark.network.protocol.StreamChunkId;
 import org.apache.spark.network.protocol.StreamFailure;
 import org.apache.spark.network.protocol.StreamResponse;
 import org.apache.spark.network.server.MessageHandler;
+
 import static org.apache.spark.network.util.NettyUtils.getRemoteAddress;
+
 import org.apache.spark.network.util.TransportFrameDecoder;
 
 /**
  * Handler that processes server responses, in response to requests issued from a
  * [[TransportClient]]. It works by tracking the list of outstanding requests (and their callbacks).
- *
+ * <p>
  * Concurrency: thread safe and can be called from multiple threads.
  */
 //用于处理服务端的响应，并且对发出请求的客户端进行响应的处理程序
 public class TransportResponseHandler extends MessageHandler<ResponseMessage> {
-  private static final Logger logger = LoggerFactory.getLogger(TransportResponseHandler.class);
+    private static final Logger logger = LoggerFactory.getLogger(TransportResponseHandler.class);
 
-  private final Channel channel;
+    private final Channel channel;
 
-  private final Map<StreamChunkId, ChunkReceivedCallback> outstandingFetches;
+    private final Map<StreamChunkId, ChunkReceivedCallback> outstandingFetches;
 
-  private final Map<Long, RpcResponseCallback> outstandingRpcs;
+    private final Map<Long, RpcResponseCallback> outstandingRpcs;
 
-  private final Queue<Pair<String, StreamCallback>> streamCallbacks;
-  private volatile boolean streamActive;
+    private final Queue<Pair<String, StreamCallback>> streamCallbacks;
+    private volatile boolean streamActive;
 
-  /** Records the time (in system nanoseconds) that the last fetch or RPC request was sent. */
-  private final AtomicLong timeOfLastRequestNs;
+    /**
+     * Records the time (in system nanoseconds) that the last fetch or RPC request was sent.
+     */
+    private final AtomicLong timeOfLastRequestNs;
 
-  public TransportResponseHandler(Channel channel) {
-    this.channel = channel;
-    this.outstandingFetches = new ConcurrentHashMap<>();
-    this.outstandingRpcs = new ConcurrentHashMap<>();
-    this.streamCallbacks = new ConcurrentLinkedQueue<>();
-    this.timeOfLastRequestNs = new AtomicLong(0);
-  }
-
-  public void addFetchRequest(StreamChunkId streamChunkId, ChunkReceivedCallback callback) {
-    updateTimeOfLastRequest();
-    outstandingFetches.put(streamChunkId, callback);
-  }
-
-  public void removeFetchRequest(StreamChunkId streamChunkId) {
-    outstandingFetches.remove(streamChunkId);
-  }
-
-  public void addRpcRequest(long requestId, RpcResponseCallback callback) {
-    updateTimeOfLastRequest();
-    outstandingRpcs.put(requestId, callback);
-  }
-
-  public void removeRpcRequest(long requestId) {
-    outstandingRpcs.remove(requestId);
-  }
-
-  public void addStreamCallback(String streamId, StreamCallback callback) {
-    timeOfLastRequestNs.set(System.nanoTime());
-    streamCallbacks.offer(ImmutablePair.of(streamId, callback));
-  }
-
-  @VisibleForTesting
-  public void deactivateStream() {
-    streamActive = false;
-  }
-
-  /**
-   * Fire the failure callback for all outstanding requests. This is called when we have an
-   * uncaught exception or pre-mature connection termination.
-   */
-  private void failOutstandingRequests(Throwable cause) {
-    for (Map.Entry<StreamChunkId, ChunkReceivedCallback> entry : outstandingFetches.entrySet()) {
-      try {
-        entry.getValue().onFailure(entry.getKey().chunkIndex, cause);
-      } catch (Exception e) {
-        logger.warn("ChunkReceivedCallback.onFailure throws exception", e);
-      }
-    }
-    for (Map.Entry<Long, RpcResponseCallback> entry : outstandingRpcs.entrySet()) {
-      try {
-        entry.getValue().onFailure(cause);
-      } catch (Exception e) {
-        logger.warn("RpcResponseCallback.onFailure throws exception", e);
-      }
-    }
-    for (Pair<String, StreamCallback> entry : streamCallbacks) {
-      try {
-        entry.getValue().onFailure(entry.getKey(), cause);
-      } catch (Exception e) {
-        logger.warn("StreamCallback.onFailure throws exception", e);
-      }
+    public TransportResponseHandler(Channel channel) {
+        this.channel = channel;
+        this.outstandingFetches = new ConcurrentHashMap<>();
+        this.outstandingRpcs = new ConcurrentHashMap<>();
+        this.streamCallbacks = new ConcurrentLinkedQueue<>();
+        this.timeOfLastRequestNs = new AtomicLong(0);
     }
 
-    // It's OK if new fetches appear, as they will fail immediately.
-    outstandingFetches.clear();
-    outstandingRpcs.clear();
-    streamCallbacks.clear();
-  }
-
-  @Override
-  public void channelActive() {
-  }
-
-  @Override
-  public void channelInactive() {
-    if (numOutstandingRequests() > 0) {
-      String remoteAddress = getRemoteAddress(channel);
-      logger.error("Still have {} requests outstanding when connection from {} is closed",
-        numOutstandingRequests(), remoteAddress);
-      failOutstandingRequests(new IOException("Connection from " + remoteAddress + " closed"));
+    public void addFetchRequest(StreamChunkId streamChunkId, ChunkReceivedCallback callback) {
+        updateTimeOfLastRequest();
+        //用于缓存发出的块请求的信息
+        outstandingFetches.put(streamChunkId, callback);
     }
-  }
 
-  @Override
-  public void exceptionCaught(Throwable cause) {
-    if (numOutstandingRequests() > 0) {
-      String remoteAddress = getRemoteAddress(channel);
-      logger.error("Still have {} requests outstanding when connection from {} is closed",
-        numOutstandingRequests(), remoteAddress);
-      failOutstandingRequests(cause);
+    public void removeFetchRequest(StreamChunkId streamChunkId) {
+        outstandingFetches.remove(streamChunkId);
     }
-  }
 
-  @Override
-  public void handle(ResponseMessage message) throws Exception {
-    if (message instanceof ChunkFetchSuccess) {
-      ChunkFetchSuccess resp = (ChunkFetchSuccess) message;
-      ChunkReceivedCallback listener = outstandingFetches.get(resp.streamChunkId);
-      if (listener == null) {
-        logger.warn("Ignoring response for block {} from {} since it is not outstanding",
-          resp.streamChunkId, getRemoteAddress(channel));
-        resp.body().release();
-      } else {
-        outstandingFetches.remove(resp.streamChunkId);
-        listener.onSuccess(resp.streamChunkId.chunkIndex, resp.body());
-        resp.body().release();
-      }
-    } else if (message instanceof ChunkFetchFailure) {
-      ChunkFetchFailure resp = (ChunkFetchFailure) message;
-      ChunkReceivedCallback listener = outstandingFetches.get(resp.streamChunkId);
-      if (listener == null) {
-        logger.warn("Ignoring response for block {} from {} ({}) since it is not outstanding",
-          resp.streamChunkId, getRemoteAddress(channel), resp.errorString);
-      } else {
-        outstandingFetches.remove(resp.streamChunkId);
-        listener.onFailure(resp.streamChunkId.chunkIndex, new ChunkFetchFailureException(
-          "Failure while fetching " + resp.streamChunkId + ": " + resp.errorString));
-      }
-    } else if (message instanceof RpcResponse) {
-      RpcResponse resp = (RpcResponse) message;
-      RpcResponseCallback listener = outstandingRpcs.get(resp.requestId);
-      if (listener == null) {
-        logger.warn("Ignoring response for RPC {} from {} ({} bytes) since it is not outstanding",
-          resp.requestId, getRemoteAddress(channel), resp.body().size());
-      } else {
-        outstandingRpcs.remove(resp.requestId);
-        try {
-          listener.onSuccess(resp.body().nioByteBuffer());
-        } finally {
-          resp.body().release();
+    public void addRpcRequest(long requestId, RpcResponseCallback callback) {
+        updateTimeOfLastRequest();
+        //用来缓存客户端发出的RPC请求信息的对应回调函数和id
+        outstandingRpcs.put(requestId, callback);
+    }
+
+    public void removeRpcRequest(long requestId) {
+        outstandingRpcs.remove(requestId);
+    }
+
+    public void addStreamCallback(String streamId, StreamCallback callback) {
+        timeOfLastRequestNs.set(System.nanoTime());
+        streamCallbacks.offer(ImmutablePair.of(streamId, callback));
+    }
+
+    @VisibleForTesting
+    public void deactivateStream() {
+        streamActive = false;
+    }
+
+    /**
+     * Fire the failure callback for all outstanding requests. This is called when we have an
+     * uncaught exception or pre-mature connection termination.
+     */
+    private void failOutstandingRequests(Throwable cause) {
+        for (Map.Entry<StreamChunkId, ChunkReceivedCallback> entry : outstandingFetches.entrySet()) {
+            try {
+                entry.getValue().onFailure(entry.getKey().chunkIndex, cause);
+            } catch (Exception e) {
+                logger.warn("ChunkReceivedCallback.onFailure throws exception", e);
+            }
         }
-      }
-    } else if (message instanceof RpcFailure) {
-      RpcFailure resp = (RpcFailure) message;
-      RpcResponseCallback listener = outstandingRpcs.get(resp.requestId);
-      if (listener == null) {
-        logger.warn("Ignoring response for RPC {} from {} ({}) since it is not outstanding",
-          resp.requestId, getRemoteAddress(channel), resp.errorString);
-      } else {
-        outstandingRpcs.remove(resp.requestId);
-        listener.onFailure(new RuntimeException(resp.errorString));
-      }
-    } else if (message instanceof StreamResponse) {
-      StreamResponse resp = (StreamResponse) message;
-      Pair<String, StreamCallback> entry = streamCallbacks.poll();
-      if (entry != null) {
-        StreamCallback callback = entry.getValue();
-        if (resp.byteCount > 0) {
-          StreamInterceptor<ResponseMessage> interceptor = new StreamInterceptor<>(
-            this, resp.streamId, resp.byteCount, callback);
-          try {
-            TransportFrameDecoder frameDecoder = (TransportFrameDecoder)
-              channel.pipeline().get(TransportFrameDecoder.HANDLER_NAME);
-            frameDecoder.setInterceptor(interceptor);
-            streamActive = true;
-          } catch (Exception e) {
-            logger.error("Error installing stream handler.", e);
-            deactivateStream();
-          }
+        for (Map.Entry<Long, RpcResponseCallback> entry : outstandingRpcs.entrySet()) {
+            try {
+                entry.getValue().onFailure(cause);
+            } catch (Exception e) {
+                logger.warn("RpcResponseCallback.onFailure throws exception", e);
+            }
+        }
+        for (Pair<String, StreamCallback> entry : streamCallbacks) {
+            try {
+                entry.getValue().onFailure(entry.getKey(), cause);
+            } catch (Exception e) {
+                logger.warn("StreamCallback.onFailure throws exception", e);
+            }
+        }
+
+        // It's OK if new fetches appear, as they will fail immediately.
+        outstandingFetches.clear();
+        outstandingRpcs.clear();
+        streamCallbacks.clear();
+    }
+
+    @Override
+    public void channelActive() {
+    }
+
+    @Override
+    public void channelInactive() {
+        if (numOutstandingRequests() > 0) {
+            String remoteAddress = getRemoteAddress(channel);
+            logger.error("Still have {} requests outstanding when connection from {} is closed",
+                    numOutstandingRequests(), remoteAddress);
+            failOutstandingRequests(new IOException("Connection from " + remoteAddress + " closed"));
+        }
+    }
+
+    @Override
+    public void exceptionCaught(Throwable cause) {
+        if (numOutstandingRequests() > 0) {
+            String remoteAddress = getRemoteAddress(channel);
+            logger.error("Still have {} requests outstanding when connection from {} is closed",
+                    numOutstandingRequests(), remoteAddress);
+            failOutstandingRequests(cause);
+        }
+    }
+
+    //客户端等待接收服务端的响应。
+    @Override
+    public void handle(ResponseMessage message) throws Exception {
+        if (message instanceof ChunkFetchSuccess) {
+            ChunkFetchSuccess resp = (ChunkFetchSuccess) message;
+            //从客户端发送的时候i的缓存中获取streamChunkId对应的回调函数
+            ChunkReceivedCallback listener = outstandingFetches.get(resp.streamChunkId);
+            if (listener == null) {
+                logger.warn("Ignoring response for block {} from {} since it is not outstanding",
+                        resp.streamChunkId, getRemoteAddress(channel));
+                resp.body().release();
+            } else {
+                //移除outstandingFetchs 缓存中的注册信息
+                outstandingFetches.remove(resp.streamChunkId);
+                //处理成功响应后的逻辑
+                listener.onSuccess(resp.streamChunkId.chunkIndex, resp.body());
+                //释放chunkFetchSuccess中的body,回收资源
+                resp.body().release();
+            }
+        } else if (message instanceof ChunkFetchFailure) {
+            ChunkFetchFailure resp = (ChunkFetchFailure) message;
+            //从outstandingFetches缓存中获取对应的回调函数
+            ChunkReceivedCallback listener = outstandingFetches.get(resp.streamChunkId);
+            if (listener == null) {
+                logger.warn("Ignoring response for block {} from {} ({}) since it is not outstanding",
+                        resp.streamChunkId, getRemoteAddress(channel), resp.errorString);
+            } else {
+                //移除注册信息
+                outstandingFetches.remove(resp.streamChunkId);
+                //处理失败响应后的逻辑
+                listener.onFailure(resp.streamChunkId.chunkIndex, new ChunkFetchFailureException(
+                        "Failure while fetching " + resp.streamChunkId + ": " + resp.errorString));
+            }
+        } else if (message instanceof RpcResponse) {
+            RpcResponse resp = (RpcResponse) message;
+            //从客户端之前发送服务端请求时的缓存中拿出需要响应给服务端时的回调函数
+            RpcResponseCallback listener = outstandingRpcs.get(resp.requestId);
+            if (listener == null) {
+                logger.warn("Ignoring response for RPC {} from {} ({} bytes) since it is not outstanding",
+                        resp.requestId, getRemoteAddress(channel), resp.body().size());
+            } else {
+                //删除缓存中对的requestid和callback的注册信息
+                outstandingRpcs.remove(resp.requestId);
+                try {
+                    //处理返回服务端成功的逻辑
+                    listener.onSuccess(resp.body().nioByteBuffer());
+                } finally {
+                    //释放rpcResonese的boy，回收资源
+                    resp.body().release();
+                }
+            }
+            //处理rpcFailure的逻辑
+        } else if (message instanceof RpcFailure) {
+            RpcFailure resp = (RpcFailure) message;
+            //从客户端发送给服务端的时候的缓存中获取当前requestid对应注册的回调函数
+            RpcResponseCallback listener = outstandingRpcs.get(resp.requestId);
+            if (listener == null) {
+                logger.warn("Ignoring response for RPC {} from {} ({}) since it is not outstanding",
+                        resp.requestId, getRemoteAddress(channel), resp.errorString);
+            } else {
+                //移除注册信息
+                outstandingRpcs.remove(resp.requestId);
+                //处理失败响应的逻辑
+                listener.onFailure(new RuntimeException(resp.errorString));
+            }
+        } else if (message instanceof StreamResponse) {
+            StreamResponse resp = (StreamResponse) message;
+            Pair<String, StreamCallback> entry = streamCallbacks.poll();
+            if (entry != null) {
+                StreamCallback callback = entry.getValue();
+                if (resp.byteCount > 0) {
+                    StreamInterceptor<ResponseMessage> interceptor = new StreamInterceptor<>(
+                            this, resp.streamId, resp.byteCount, callback);
+                    try {
+                        TransportFrameDecoder frameDecoder = (TransportFrameDecoder)
+                                channel.pipeline().get(TransportFrameDecoder.HANDLER_NAME);
+                        frameDecoder.setInterceptor(interceptor);
+                        streamActive = true;
+                    } catch (Exception e) {
+                        logger.error("Error installing stream handler.", e);
+                        deactivateStream();
+                    }
+                } else {
+                    try {
+                        callback.onComplete(resp.streamId);
+                    } catch (Exception e) {
+                        logger.warn("Error in stream handler onComplete().", e);
+                    }
+                }
+            } else {
+                logger.error("Could not find callback for StreamResponse.");
+            }
+        } else if (message instanceof StreamFailure) {
+            StreamFailure resp = (StreamFailure) message;
+            Pair<String, StreamCallback> entry = streamCallbacks.poll();
+            if (entry != null) {
+                StreamCallback callback = entry.getValue();
+                try {
+                    callback.onFailure(resp.streamId, new RuntimeException(resp.error));
+                } catch (IOException ioe) {
+                    logger.warn("Error in stream failure handler.", ioe);
+                }
+            } else {
+                logger.warn("Stream failure with unknown callback: {}", resp.error);
+            }
         } else {
-          try {
-            callback.onComplete(resp.streamId);
-          } catch (Exception e) {
-            logger.warn("Error in stream handler onComplete().", e);
-          }
+            throw new IllegalStateException("Unknown response type: " + message.type());
         }
-      } else {
-        logger.error("Could not find callback for StreamResponse.");
-      }
-    } else if (message instanceof StreamFailure) {
-      StreamFailure resp = (StreamFailure) message;
-      Pair<String, StreamCallback> entry = streamCallbacks.poll();
-      if (entry != null) {
-        StreamCallback callback = entry.getValue();
-        try {
-          callback.onFailure(resp.streamId, new RuntimeException(resp.error));
-        } catch (IOException ioe) {
-          logger.warn("Error in stream failure handler.", ioe);
-        }
-      } else {
-        logger.warn("Stream failure with unknown callback: {}", resp.error);
-      }
-    } else {
-      throw new IllegalStateException("Unknown response type: " + message.type());
     }
-  }
 
-  /** Returns total number of outstanding requests (fetch requests + rpcs) */
-  public int numOutstandingRequests() {
-    return outstandingFetches.size() + outstandingRpcs.size() + streamCallbacks.size() +
-      (streamActive ? 1 : 0);
-  }
+    /**
+     * Returns total number of outstanding requests (fetch requests + rpcs)
+     */
+    public int numOutstandingRequests() {
+        return outstandingFetches.size() + outstandingRpcs.size() + streamCallbacks.size() +
+                (streamActive ? 1 : 0);
+    }
 
-  /** Returns the time in nanoseconds of when the last request was sent out. */
-  public long getTimeOfLastRequestNs() {
-    return timeOfLastRequestNs.get();
-  }
+    /**
+     * Returns the time in nanoseconds of when the last request was sent out.
+     */
+    public long getTimeOfLastRequestNs() {
+        return timeOfLastRequestNs.get();
+    }
 
-  /** Updates the time of the last request to the current system time. */
-  public void updateTimeOfLastRequest() {
-    timeOfLastRequestNs.set(System.nanoTime());
-  }
+    //跟新最后一次请求的时间为当前系统时间
+    public void updateTimeOfLastRequest() {
+        timeOfLastRequestNs.set(System.nanoTime());
+    }
 
 }

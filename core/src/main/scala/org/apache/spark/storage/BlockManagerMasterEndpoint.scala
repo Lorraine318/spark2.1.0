@@ -37,6 +37,7 @@ import org.apache.spark.util.{ThreadUtils, Utils}
  * BlockManagerMasterEndpoint is an [[ThreadSafeRpcEndpoint]] on the master node to track statuses
  * of all slaves' block managers.
  */
+//是driver对分配给应用的所有executor及其BlockManager进行统一管理的组件
 private[spark]
 class BlockManagerMasterEndpoint(
     override val rpcEnv: RpcEnv,

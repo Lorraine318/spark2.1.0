@@ -41,6 +41,7 @@ import org.apache.spark.util.Utils
  * in the "Security" document. Please refer to that document for specific features implemented
  * here.
  */
+//SparkEnv中的安全管理器
 private[spark] class SecurityManager(
     sparkConf: SparkConf,
     val ioEncryptionKey: Option[Array[Byte]] = None)
@@ -51,30 +52,31 @@ private[spark] class SecurityManager(
   // allow all users/groups to have view/modify permissions
   private val WILDCARD_ACL = "*"
 
+  //是否开启认证，通过spark.authenticate属性配置
   private val authOn = sparkConf.get(NETWORK_AUTH_ENABLED)
-  // keep spark.ui.acls.enable for backwards compatibility with 1.0
+  //是否对账号进行授权检查
   private var aclsOn =
     sparkConf.getBoolean("spark.acls.enable", sparkConf.getBoolean("spark.ui.acls.enable", false))
 
-  // admin acls should be set before view or modify acls
+  //管理员账号集合
   private var adminAcls: Set[String] =
     stringToSet(sparkConf.get("spark.admin.acls", ""))
 
-  // admin group acls should be set before view or modify group acls
+  //管理员账号所在组的集合
   private var adminAclsGroups : Set[String] =
     stringToSet(sparkConf.get("spark.admin.acls.groups", ""))
 
+  //有查看权限账号的集合
   private var viewAcls: Set[String] = _
-
+  //拥有查看权限账号的集合
   private var viewAclsGroups: Set[String] = _
 
-  // list of users who have permission to modify the application. This should
-  // apply to both UI and CLI for things like killing the application.
+  //有修改权限的账号的集合，包括adminAcls, defaultAclUser是 soark.modify.acls属性配置的用户
   private var modifyAcls: Set[String] = _
-
+  //拥有修改权限的账号所在组的集合，包括 adminAclsGroups 和 spark.modify.acls.groups属性配置的用户
   private var modifyAclsGroups: Set[String] = _
 
-  // always add the current user and SPARK_USER to the viewAcls
+  //默认用户，包括系统属性user.name指定的用户或系统登录用户或者通过系统环境变量Spark_USER进行设置的用户
   private val defaultAclUsers = Set[String](System.getProperty("user.name", ""),
     Utils.getCurrentUserName())
 
@@ -84,6 +86,7 @@ private[spark] class SecurityManager(
   setViewAclsGroups(sparkConf.get("spark.ui.view.acls.groups", ""));
   setModifyAclsGroups(sparkConf.get("spark.modify.acls.groups", ""));
 
+  //密钥
   private var secretKey: String = _
   logInfo("SecurityManager: authentication " + (if (authOn) "enabled" else "disabled") +
     "; ui acls " + (if (aclsOn) "enabled" else "disabled") +
@@ -92,12 +95,11 @@ private[spark] class SecurityManager(
     "; users  with modify permissions: " + modifyAcls.toString() +
     "; groups with modify permissions: " + modifyAclsGroups.toString())
 
-  // Set our own authenticator to properly negotiate user/password for HTTP connections.
-  // This is needed by the HTTP client fetching from the HttpServer. Put here so its
-  // only set once.
+ //设置了默认的口令认证实例Authenticator 用于每次使用Http client 从 http服务器获取用户的用户名和密码，这是由于Spark的节点间通信往往需要动态协商用户名，密码
   if (authOn) {
     Authenticator.setDefault(
       new Authenticator() {
+        //获取用户名密码
         override def getPasswordAuthentication(): PasswordAuthentication = {
           var passAuth: PasswordAuthentication = null
           val userInfo = getRequestingURL().getUserInfo()

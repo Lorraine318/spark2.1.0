@@ -46,6 +46,7 @@ public abstract class RpcHandler {
    * @param callback Callback which should be invoked exactly once upon success or failure of the
    *                 RPC.
    */
+  //用来接收单一的RPC消息。具体逻辑需要子类去实现
   public abstract void receive(
       TransportClient client,
       ByteBuffer message,
@@ -96,6 +97,7 @@ public abstract class RpcHandler {
    *               of this RPC. This will always be the exact same object for a particular channel.
    * @param message The serialized bytes of the RPC.
    */
+  //默认OneWayRpcCallback类型，不需要客户端回复处理
   public void receive(TransportClient client, ByteBuffer message) {
     receive(client, message, ONE_WAY_CALLBACK);
   }

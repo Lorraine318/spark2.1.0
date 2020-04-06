@@ -30,11 +30,12 @@ import org.apache.spark.internal.Logging
 /**
  * An event bus which posts events to its listeners.
  */
+//L代表监听器的泛型参数   E代表事件的泛型参数
 private[spark] trait ListenerBus[L <: AnyRef, E] extends Logging {
 
   private[this] val listenersPlusTimers = new CopyOnWriteArrayList[(L, Option[Timer])]
 
-  // Marked `private[spark]` for access in tests.
+  // 线程安全的list  用于维护所有注册的监听器
   private[spark] def listeners = listenersPlusTimers.asScala.map(_._1).asJava
 
   /**
@@ -46,6 +47,7 @@ private[spark] trait ListenerBus[L <: AnyRef, E] extends Logging {
   /**
    * Add a listener to listen events. This method is thread-safe and can be called in any thread.
    */
+  //向listeners中添加监听器
   final def addListener(listener: L): Unit = {
     listenersPlusTimers.add((listener, getTimer(listener)))
   }
@@ -54,6 +56,7 @@ private[spark] trait ListenerBus[L <: AnyRef, E] extends Logging {
    * Remove a listener and it won't receive any events. This method is thread-safe and can be called
    * in any thread.
    */
+  //移除监听器
   final def removeListener(listener: L): Unit = {
     listenersPlusTimers.asScala.find(_._1 eq listener).foreach { listenerAndTimer =>
       listenersPlusTimers.remove(listenerAndTimer)
@@ -73,6 +76,7 @@ private[spark] trait ListenerBus[L <: AnyRef, E] extends Logging {
    * Post the event to all registered listeners. The `postToAll` caller should guarantee calling
    * `postToAll` in the same thread for all events.
    */
+  //将事件投递给所有的监听器   遍历所有的监听器，并调用子类实现的doPostEvent方法
   def postToAll(event: E): Unit = {
     // JavaConverters can create a JIterableWrapper if we use asScala.
     // However, this method will be called frequently. To avoid the wrapper cost, here we use
@@ -113,11 +117,13 @@ private[spark] trait ListenerBus[L <: AnyRef, E] extends Logging {
    * Post an event to the specified listener. `onPostEvent` is guaranteed to be called in the same
    * thread for all listeners.
    */
+  //用于将事件投递给指定的监听器
   protected def doPostEvent(listener: L, event: E): Unit
 
   /** Allows bus implementations to prevent error logging for certain exceptions. */
   protected def isIgnorableException(e: Throwable): Boolean = false
 
+  //查找与指定类型相同的监听器列表
   private[spark] def findListenersByClass[T <: L : ClassTag](): Seq[T] = {
     val c = implicitly[ClassTag[T]].runtimeClass
     listeners.asScala.filter(_.getClass == c).map(_.asInstanceOf[T]).toSeq

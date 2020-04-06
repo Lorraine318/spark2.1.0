@@ -130,6 +130,7 @@ public class TransportClient implements Closeable {
    * @param chunkIndex 0-based index of the chunk to fetch
    * @param callback Callback invoked upon successful receipt of chunk, or upon any failure.
    */
+  //发送获取块请求
   public void fetchChunk(
       long streamId,
       int chunkIndex,
@@ -137,15 +138,17 @@ public class TransportClient implements Closeable {
     if (logger.isDebugEnabled()) {
       logger.debug("Sending fetch chunk request {} to {}", chunkIndex, getRemoteAddress(channel));
     }
-
+    //使用流的标记streamid 和 块的索引chunkIndex 创建StreamChunkid
     StreamChunkId streamChunkId = new StreamChunkId(streamId, chunkIndex);
     StdChannelListener listener = new StdChannelListener(streamChunkId) {
       @Override
       void handleFailure(String errorMsg, Throwable cause) {
+        //移除块缓存信息
         handler.removeFetchRequest(streamChunkId);
         callback.onFailure(chunkIndex, new IOException(errorMsg, cause));
       }
     };
+    //调用TransportResponseHandler  来添加缓存
     handler.addFetchRequest(streamChunkId, callback);
 
     channel.writeAndFlush(new ChunkFetchRequest(streamChunkId)).addListener(listener);
@@ -157,6 +160,7 @@ public class TransportClient implements Closeable {
    * @param streamId The stream to fetch.
    * @param callback Object to call with the stream data.
    */
+  //使用流的ID，从远端获取流数据
   public void stream(String streamId, StreamCallback callback) {
     StdChannelListener listener = new StdChannelListener(streamId) {
       @Override
@@ -185,15 +189,19 @@ public class TransportClient implements Closeable {
    * @param callback Callback to handle the RPC's reply.
    * @return The RPC's id.
    */
+  //客户端向服务端发送RPC的请求，通过at least once delivery 原则保证请求不会丢失。
   public long sendRpc(ByteBuffer message, RpcResponseCallback callback) {
     if (logger.isTraceEnabled()) {
       logger.trace("Sending RPC to {}", getRemoteAddress(channel));
     }
 
     long requestId = requestId();
+    //添加requestId与RpcResponseCallback的引用之间的关系  通过TransportResponseHandler添加不是RPCHandler
     handler.addRpcRequest(requestId, callback);
 
+    //父类是StdChannelListener，如果失败会在回调函数中删除removeRpcRequest方法，将此次请求从outstandingRpcs中移除，并返回失败响应
     RpcChannelListener listener = new RpcChannelListener(requestId, callback);
+    //发送RPC请求到服务端
     channel.writeAndFlush(new RpcRequest(requestId, new NioManagedBuffer(message)))
       .addListener(listener);
 
@@ -232,6 +240,7 @@ public class TransportClient implements Closeable {
    * Synchronously sends an opaque message to the RpcHandler on the server-side, waiting for up to
    * a specified timeout for a response.
    */
+  //向服务端发送异步的RPC请求，并根据指定的超时时间等待响应
   public ByteBuffer sendRpcSync(ByteBuffer message, long timeoutMs) {
     final SettableFuture<ByteBuffer> result = SettableFuture.create();
 
@@ -266,6 +275,7 @@ public class TransportClient implements Closeable {
    *
    * @param message The message to send.
    */
+  //向服务端发送RPC请求，但是并不希望能获取响应。因为不能保证投递的可靠性。
   public void send(ByteBuffer message) {
     channel.writeAndFlush(new OneWayMessage(new NioManagedBuffer(message)));
   }
@@ -304,6 +314,7 @@ public class TransportClient implements Closeable {
       .toString();
   }
 
+  //使用UUID生成请求主键requestId
   private static long requestId() {
     return Math.abs(UUID.randomUUID().getLeastSignificantBits());
   }
@@ -354,6 +365,7 @@ public class TransportClient implements Closeable {
 
     @Override
     void handleFailure(String errorMsg, Throwable cause) {
+      //发送失败后，会调用transportResponseHandler的 removeFetchRequest方法来在缓存中移除
       handler.removeRpcRequest(rpcRequestId);
       callback.onFailure(new IOException(errorMsg, cause));
     }

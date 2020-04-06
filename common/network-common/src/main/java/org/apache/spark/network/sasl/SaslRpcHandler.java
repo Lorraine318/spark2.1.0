@@ -39,145 +39,161 @@ import org.apache.spark.network.util.TransportConf;
  * RPC Handler which performs SASL authentication before delegating to a child RPC handler.
  * The delegate will only receive messages if the given connection has been successfully
  * authenticated. A connection may be authenticated at most once.
- *
+ * <p>
  * Note that the authentication process consists of multiple challenge-response pairs, each of
  * which are individual RPCs.
  */
 public class SaslRpcHandler extends RpcHandler {
-  private static final Logger logger = LoggerFactory.getLogger(SaslRpcHandler.class);
+    private static final Logger logger = LoggerFactory.getLogger(SaslRpcHandler.class);
 
-  /** Transport configuration. */
-  private final TransportConf conf;
+    /**
+     * Transport configuration.
+     */
+    private final TransportConf conf;
 
-  /** The client channel. */
-  private final Channel channel;
+    /**
+     * The client channel.
+     */
+    private final Channel channel;
 
-  /** RpcHandler we will delegate to for authenticated connections. */
-  private final RpcHandler delegate;
+    /**
+     * RpcHandler we will delegate to for authenticated connections.
+     */
+    private final RpcHandler delegate;
 
-  /** Class which provides secret keys which are shared by server and client on a per-app basis. */
-  private final SecretKeyHolder secretKeyHolder;
+    /**
+     * Class which provides secret keys which are shared by server and client on a per-app basis.
+     */
+    private final SecretKeyHolder secretKeyHolder;
 
-  private SparkSaslServer saslServer;
-  private boolean isComplete;
-  private boolean isAuthenticated;
+    private SparkSaslServer saslServer;
+    private boolean isComplete;
+    private boolean isAuthenticated;
 
-  public SaslRpcHandler(
-      TransportConf conf,
-      Channel channel,
-      RpcHandler delegate,
-      SecretKeyHolder secretKeyHolder) {
-    this.conf = conf;
-    this.channel = channel;
-    this.delegate = delegate;
-    this.secretKeyHolder = secretKeyHolder;
-    this.saslServer = null;
-    this.isComplete = false;
-    this.isAuthenticated = false;
-  }
-
-  @Override
-  public void receive(TransportClient client, ByteBuffer message, RpcResponseCallback callback) {
-    if (isComplete) {
-      // Authentication complete, delegate to base handler.
-      delegate.receive(client, message, callback);
-      return;
-    }
-    if (saslServer == null || !saslServer.isComplete()) {
-      ByteBuf nettyBuf = Unpooled.wrappedBuffer(message);
-      SaslMessage saslMessage;
-      try {
-        saslMessage = SaslMessage.decode(nettyBuf);
-      } finally {
-        nettyBuf.release();
-      }
-
-      if (saslServer == null) {
-        // First message in the handshake, setup the necessary state.
-        client.setClientId(saslMessage.appId);
-        saslServer = new SparkSaslServer(saslMessage.appId, secretKeyHolder,
-          conf.saslServerAlwaysEncrypt());
-      }
-
-      byte[] response;
-      try {
-        response = saslServer.response(JavaUtils.bufferToArray(
-          saslMessage.body().nioByteBuffer()));
-      } catch (IOException ioe) {
-        throw new RuntimeException(ioe);
-      }
-      callback.onSuccess(ByteBuffer.wrap(response));
+    public SaslRpcHandler(
+            TransportConf conf,
+            Channel channel,
+            RpcHandler delegate,
+            SecretKeyHolder secretKeyHolder) {
+        this.conf = conf;
+        this.channel = channel;
+        this.delegate = delegate;
+        this.secretKeyHolder = secretKeyHolder;
+        this.saslServer = null;
+        this.isComplete = false;
+        this.isAuthenticated = false;
     }
 
-    // Setup encryption after the SASL response is sent, otherwise the client can't parse the
-    // response. It's ok to change the channel pipeline here since we are processing an incoming
-    // message, so the pipeline is busy and no new incoming messages will be fed to it before this
-    // method returns. This assumes that the code ensures, through other means, that no outbound
-    // messages are being written to the channel while negotiation is still going on.
-    if (saslServer.isComplete()) {
-      if (!SparkSaslServer.QOP_AUTH_CONF.equals(saslServer.getNegotiatedProperty(Sasl.QOP))) {
-        logger.debug("SASL authentication successful for channel {}", client);
-        complete(true);
-        return;
-      }
+    @Override
+    public void receive(TransportClient client, ByteBuffer message, RpcResponseCallback callback) {
+        //如果sasl认证交换已经完成
+        if (isComplete) {
+            // 将消息传递给SaslRpcHandler 所代理的下游RPCHandler并返回。
+            delegate.receive(client, message, callback);
+            return;
+        }
+        //如果sasl 认证交换未完成，
+        if (saslServer == null || !saslServer.isComplete()) {
+            //创建包装给定数据的ByteBuf对象
+            ByteBuf nettyBuf = Unpooled.wrappedBuffer(message);
+            SaslMessage saslMessage;
+            try {
+                //将数据进行解密操作
+                saslMessage = SaslMessage.decode(nettyBuf);
+            } finally {
+                nettyBuf.release();
+            }
 
-      logger.debug("Enabling encryption for channel {}", client);
-      SaslEncryption.addToChannel(channel, saslServer, conf.maxSaslEncryptedBlockSize());
-      complete(false);
-      return;
-    }
-  }
+            if (saslServer == null) {
+                // 如果saslServer还未创建，则需要创建SparkSaslServer
+                client.setClientId(saslMessage.appId);
+                saslServer = new SparkSaslServer(saslMessage.appId, secretKeyHolder,
+                        conf.saslServerAlwaysEncrypt());
+            }
 
-  @Override
-  public void receive(TransportClient client, ByteBuffer message) {
-    delegate.receive(client, message);
-  }
+            byte[] response;
+            try {
+                //使用saslServer处理已经解密的消息
+                response = saslServer.response(JavaUtils.bufferToArray(
+                        saslMessage.body().nioByteBuffer()));
+            } catch (IOException ioe) {
+                throw new RuntimeException(ioe);
+            }
+            //通过回调方法返回客户端
+            callback.onSuccess(ByteBuffer.wrap(response));
+        }
 
-  @Override
-  public StreamCallbackWithID receiveStream(
-      TransportClient client,
-      ByteBuffer message,
-      RpcResponseCallback callback) {
-    return delegate.receiveStream(client, message, callback);
-  }
+        // Setup encryption after the SASL response is sent, otherwise the client can't parse the
+        // response. It's ok to change the channel pipeline here since we are processing an incoming
+        // message, so the pipeline is busy and no new incoming messages will be fed to it before this
+        // method returns. This assumes that the code ensures, through other means, that no outbound
+        // messages are being written to the channel while negotiation is still going on.
+        //如果sasl认证交换已经完成
+        if (saslServer.isComplete()) {
+            if (!SparkSaslServer.QOP_AUTH_CONF.equals(saslServer.getNegotiatedProperty(Sasl.QOP))) {
+                logger.debug("SASL authentication successful for channel {}", client);
+                complete(true); //sasl认证交换已经完成 isComplete改为true
+                return;
+            }
 
-  @Override
-  public StreamManager getStreamManager() {
-    return delegate.getStreamManager();
-  }
-
-  @Override
-  public void channelActive(TransportClient client) {
-    delegate.channelActive(client);
-  }
-
-  @Override
-  public void channelInactive(TransportClient client) {
-    try {
-      delegate.channelInactive(client);
-    } finally {
-      if (saslServer != null) {
-        saslServer.dispose();
-      }
-    }
-  }
-
-  @Override
-  public void exceptionCaught(Throwable cause, TransportClient client) {
-    delegate.exceptionCaught(cause, client);
-  }
-
-  private void complete(boolean dispose) {
-    if (dispose) {
-      try {
-        saslServer.dispose();
-      } catch (RuntimeException e) {
-        logger.error("Error while disposing SASL server", e);
-      }
+            logger.debug("Enabling encryption for channel {}", client);
+            //对管道进行sasl加密
+            SaslEncryption.addToChannel(channel, saslServer, conf.maxSaslEncryptedBlockSize());
+            complete(false);
+            return;
+        }
     }
 
-    saslServer = null;
-    isComplete = true;
-  }
+    @Override
+    public void receive(TransportClient client, ByteBuffer message) {
+        delegate.receive(client, message);
+    }
+
+    @Override
+    public StreamCallbackWithID receiveStream(
+            TransportClient client,
+            ByteBuffer message,
+            RpcResponseCallback callback) {
+        return delegate.receiveStream(client, message, callback);
+    }
+
+    @Override
+    public StreamManager getStreamManager() {
+        return delegate.getStreamManager();
+    }
+
+    @Override
+    public void channelActive(TransportClient client) {
+        delegate.channelActive(client);
+    }
+
+    @Override
+    public void channelInactive(TransportClient client) {
+        try {
+            delegate.channelInactive(client);
+        } finally {
+            if (saslServer != null) {
+                saslServer.dispose();
+            }
+        }
+    }
+
+    @Override
+    public void exceptionCaught(Throwable cause, TransportClient client) {
+        delegate.exceptionCaught(cause, client);
+    }
+
+    private void complete(boolean dispose) {
+        if (dispose) {
+            try {
+                saslServer.dispose();
+            } catch (RuntimeException e) {
+                logger.error("Error while disposing SASL server", e);
+            }
+        }
+
+        saslServer = null;
+        isComplete = true;
+    }
 
 }

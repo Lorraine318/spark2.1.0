@@ -49,6 +49,7 @@ import org.apache.spark.util.{JsonProtocol, Utils}
  *   spark.eventLog.dir - Path to the directory in which events are logged.
  *   spark.eventLog.buffer.kb - Buffer size to use when writing to output streams
  */
+//将事件记录到日志中
 private[spark] class EventLoggingListener(
     appId: String,
     appAttemptId : Option[String],
@@ -133,7 +134,7 @@ private[spark] class EventLoggingListener(
     }
   }
 
-  /** Log the event as JSON. */
+  //logEvnet用于将事件转换为Json字符串后写入日志文件
   private def logEvent(event: SparkListenerEvent, flushLogger: Boolean = false) {
     val eventJson = JsonProtocol.sparkEventToJson(event)
     // scalastyle:off println

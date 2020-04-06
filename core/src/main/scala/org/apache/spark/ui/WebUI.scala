@@ -38,29 +38,34 @@ import org.apache.spark.util.Utils
  * Each WebUI represents a collection of tabs, each of which in turn represents a collection of
  * pages. The use of tabs is optional, however; a WebUI may choose to include pages directly.
  */
+//子类有： 在yarn模式下的扩展HistoryServerUI，  MasterWebUi, WorkerWebUi, SparkUi
 private[spark] abstract class WebUI(
-    val securityManager: SecurityManager,
-    val sslOptions: SSLOptions,
-    port: Int,
+    val securityManager: SecurityManager,  //sparkEnv中创建的安全管理器
+    val sslOptions: SSLOptions,   //使用SecurityManager获取spark.ssl.ui属性指定的WebUI的SSL选项
+    port: Int,     //webUI对外服务的端口。可以通过spark.ui.port来进行配置
     conf: SparkConf,
-    basePath: String = "",
-    name: String = "")
+    basePath: String = "",  //webui的基本路径
+    name: String = "")  //webui的名称
   extends Logging {
 
-  protected val tabs = ArrayBuffer[WebUITab]()
-  protected val handlers = ArrayBuffer[ServletContextHandler]()
+  protected val tabs = ArrayBuffer[WebUITab]()  //webUITab的缓冲数组
+  protected val handlers = ArrayBuffer[ServletContextHandler]() //ServletContextHandler的缓冲数组。ServletContextHandler是Jetty提供的API，负责对ServletContext进行处理
+  //webUIPage 和ServletContextHandler缓冲数组之间的映射挂你。
   protected val pageToHandlers = new HashMap[WebUIPage, ArrayBuffer[ServletContextHandler]]
+  //用于缓冲serverInfo,即webUI的Jetty服务器信息
   protected var serverInfo: Option[ServerInfo] = None
+  //当前WebUI的jetty服务的主机名
   protected val publicHostName = Option(conf.getenv("SPARK_PUBLIC_DNS")).getOrElse(
     conf.get(DRIVER_HOST_ADDRESS))
+  //当前类的简单名称
   private val className = Utils.getFormattedClassName(this)
 
-  def getBasePath: String = basePath
-  def getTabs: Seq[WebUITab] = tabs
-  def getHandlers: Seq[ServletContextHandler] = handlers
+  def getBasePath: String = basePath  //获取basePath
+  def getTabs: Seq[WebUITab] = tabs  //获取tabs中的所有WebUITab.并以scala的序列返回。
+  def getHandlers: Seq[ServletContextHandler] = handlers //获取handlers中的所有ServletContextHandler。并以scala的序列返回
   def getSecurityManager: SecurityManager = securityManager
 
-  /** Attaches a tab to this UI, along with all of its attached pages. */
+  //首先向tabs中添加WebUiTab ，然后给每个WebUiTab去绑定对应的ServletContextHandler
   def attachTab(tab: WebUITab): Unit = {
     tab.pages.foreach(attachPage)
     tabs += tab
@@ -80,23 +85,25 @@ private[spark] abstract class WebUI(
   /** Attaches a page to this UI. */
   def attachPage(page: WebUIPage): Unit = {
     val pagePath = "/" + page.prefix
+    //调用JettyUtils的createServletHandler的方法给WebuiPage创建于reader和readerJson的两个方法分别关联servletContextHandler
     val renderHandler = createServletHandler(pagePath,
       (request: HttpServletRequest) => page.render(request), securityManager, conf, basePath)
     val renderJsonHandler = createServletHandler(pagePath.stripSuffix("/") + "/json",
       (request: HttpServletRequest) => page.renderJson(request), securityManager, conf, basePath)
     attachHandler(renderHandler)
     attachHandler(renderJsonHandler)
+    //将映射的这两个ServletContextHandler 和 WebUiPage 更新到pageToHandlers 中
     val handlers = pageToHandlers.getOrElseUpdate(page, ArrayBuffer[ServletContextHandler]())
     handlers += renderHandler
   }
 
-  /** Attaches a handler to this UI. */
+  //给handlers缓冲数组中添加ServletContextHandler，并且通过serverInfo的addHandler方法添加到Jetty服务器中
   def attachHandler(handler: ServletContextHandler): Unit = {
     handlers += handler
     serverInfo.foreach(_.addHandler(handler))
   }
 
-  /** Detaches a handler from this UI. */
+  //handlers缓冲数组中移除ServletContextHandler，并且通过serverInfo的addHandler方法从Jetty服务器中移除
   def detachHandler(handler: ServletContextHandler): Unit = {
     handlers -= handler
     serverInfo.foreach(_.removeHandler(handler))
@@ -117,14 +124,15 @@ private[spark] abstract class WebUI(
    * @param resourceBase Root of where to find resources to serve.
    * @param path Path in UI where to mount the resources.
    */
+  //创建静态文件服务的ServletContextHandler
   def addStaticHandler(resourceBase: String, path: String = "/static"): Unit = {
     attachHandler(JettyUtils.createStaticHandler(resourceBase, path))
   }
 
-  /** A hook to initialize components of the UI */
+  //用于初始化webUI服务中的所有组件，需要子类实现
   def initialize(): Unit
 
-  /** Binds to the HTTP server behind this web interface. */
+ //启动于webUI绑定的Jetty服务
   def bind(): Unit = {
     assert(serverInfo.isEmpty, s"Attempted to bind $className more than once!")
     try {
@@ -138,13 +146,13 @@ private[spark] abstract class WebUI(
     }
   }
 
-  /** @return The url of web interface. Only valid after [[bind]]. */
+  //获取WebUI的web界面的URL
   def webUrl: String = s"http://$publicHostName:$boundPort"
 
-  /** @return The actual port to which this server is bound. Only valid after [[bind]]. */
+  //获取WebUI的jetty服务的端口
   def boundPort: Int = serverInfo.map(_.boundPort).getOrElse(-1)
 
-  /** Stops the server behind this web interface. Only valid after [[bind]]. */
+  //停止webui ，实际上就是停止webUI底层的jetty服务
   def stop(): Unit = {
     assert(serverInfo.isDefined,
       s"Attempted to stop $className before binding to a server!")
@@ -157,19 +165,22 @@ private[spark] abstract class WebUI(
  * A tab that represents a collection of pages.
  * The prefix is appended to the parent address to form a full path, and must not contain slashes.
  */
+//用于展现一组WebUiPage       parent: 上一级节点 webUiTab的父亲只能是WebUI        prefix :当前webUITab的前缀。 prefix将商机节点的路径一起构成当前WebUItAb的访问路径
 private[spark] abstract class WebUITab(parent: WebUI, val prefix: String) {
+  //当前WebUITab所包含的WebUIPage的缓冲数组
   val pages = ArrayBuffer[WebUIPage]()
+  //当前WebUITab的名称
   val name = prefix.capitalize
 
-  /** Attach a page to this tab. This prepends the page's prefix with the tab's own prefix. */
+  //首先将当前WebUITab的前缀与WebUIPage的前缀拼接，作为WebUIPage的访问路径。然后向pages中添加WebUIPage
   def attachPage(page: WebUIPage) {
     page.prefix = (prefix + "/" + page.prefix).stripSuffix("/")
     pages += page
   }
 
-  /** Get a list of header tabs from the parent UI. */
+  //获取父亲WebUI中的所有WebUITab.
   def headerTabs: Seq[WebUITab] = parent.getTabs
-
+  //获取父亲WebUI的基本路径
   def basePath: String = parent.getBasePath
 }
 
@@ -182,7 +193,10 @@ private[spark] abstract class WebUITab(parent: WebUI, val prefix: String) {
  * Else, if the parent is a WebUITab, the prefix is appended to the super prefix of the parent
  * to form a relative path. The prefix must not contain slashes.
  */
+//定义了页面的规范
 private[spark] abstract class WebUIPage(var prefix: String) {
+  //渲染页面
   def render(request: HttpServletRequest): Seq[Node]
+  //生成JSON
   def renderJson(request: HttpServletRequest): JValue = JNothing
 }

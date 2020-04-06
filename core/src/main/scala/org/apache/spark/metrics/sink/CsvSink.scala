@@ -26,6 +26,7 @@ import com.codahale.metrics.{CsvReporter, MetricRegistry}
 import org.apache.spark.SecurityManager
 import org.apache.spark.metrics.MetricsSystem
 
+//借助Metrics提供的CSVReporter的api,将度量输出到CSV文件中
 private[spark] class CsvSink(val property: Properties, val registry: MetricRegistry,
     securityMgr: SecurityManager) extends Sink {
   val CSV_KEY_PERIOD = "period"

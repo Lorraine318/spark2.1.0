@@ -89,6 +89,7 @@ private class AsyncEventQueue(
     while (next != POISON_PILL) {
       val ctx = processingTime.time()
       try {
+        //事件处理
         super.postToAll(next)
       } finally {
         ctx.stop()

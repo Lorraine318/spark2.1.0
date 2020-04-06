@@ -149,9 +149,6 @@ public class TransportClientFactory implements Closeable {
    */
   public TransportClient createClient(String remoteHost, int remotePort)
       throws IOException, InterruptedException {
-    // Get connection from the connection pool first.
-    // If it is not found or not active, create a new one.
-    // Use unresolved address here to avoid DNS resolution each time we creates a client.
     //调用InetSocketAddress.createUnresolved 创建地址，如果缓存中有transportClient,可以避免不必要的域名解析
     final InetSocketAddress unresolvedAddress =
       InetSocketAddress.createUnresolved(remoteHost, remotePort);

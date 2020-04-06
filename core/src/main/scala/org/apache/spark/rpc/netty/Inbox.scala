@@ -26,34 +26,34 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.rpc.{RpcAddress, RpcEndpoint, ThreadSafeRpcEndpoint}
 
 
+//rpc传递消息的类型
 private[netty] sealed trait InboxMessage
 
+//rpcEndpoint处理此类型的消息后不需要向客户端回复消息
 private[netty] case class OneWayMessage(
     senderAddress: RpcAddress,
     content: Any) extends InboxMessage
-
+//RPC消息。 rpcEndpoint处理完此消息后需要向客户端回复消息
 private[netty] case class RpcMessage(
     senderAddress: RpcAddress,
     content: Any,
     context: NettyRpcCallContext) extends InboxMessage
-
+//用于Inbox实例化后，在通知与此Inbox相关联的RpcEndpoint启动
 private[netty] case object OnStart extends InboxMessage
-
+//用于Inbox停止后，在通知与此Inbox相关联的RpcEndpoint停止
 private[netty] case object OnStop extends InboxMessage
 
-/** A message to tell all endpoints that a remote process has connected. */
+//此消息用于告诉所有的RpcEndpoint，有远端的进程已经与当前RPC服务建立了连接
 private[netty] case class RemoteProcessConnected(remoteAddress: RpcAddress) extends InboxMessage
 
-/** A message to tell all endpoints that a remote process has disconnected. */
+//此消息用于告诉所有的RpcEndpoint，有远端的进程已经与当前RPC服务断开了连接
 private[netty] case class RemoteProcessDisconnected(remoteAddress: RpcAddress) extends InboxMessage
 
-/** A message to tell all endpoints that a network error has happened. */
+//此消息用于告诉所有的RPCEndpoint，与远端某个地址之间的连接发生了错误
 private[netty] case class RemoteProcessConnectionError(cause: Throwable, remoteAddress: RpcAddress)
   extends InboxMessage
 
-/**
- * An inbox that stores messages for an [[RpcEndpoint]] and posts messages to it thread-safely.
- */
+//端点内的盒子。每个RpcEndpoint都有一个对应的盒子，这个盒子里面有存储InboxMessage消息的列表messages.
 private[netty] class Inbox(
     val endpointRef: NettyRpcEndpointRef,
     val endpoint: RpcEndpoint)

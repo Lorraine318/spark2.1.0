@@ -63,6 +63,7 @@ public final class FileSegmentManagedBuffer extends ManagedBuffer {
   public ByteBuffer nioByteBuffer() throws IOException {
     FileChannel channel = null;
     try {
+      //r表示以只读的方式打开文本
       channel = new RandomAccessFile(file, "r").getChannel();
       // Just copy the buffer if it's sufficiently small, as memory mapping has a high overhead.
       if (length < conf.memoryMapBytes()) {

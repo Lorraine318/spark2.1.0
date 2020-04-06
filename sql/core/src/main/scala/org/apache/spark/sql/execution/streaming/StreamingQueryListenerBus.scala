@@ -35,6 +35,7 @@ import org.apache.spark.util.ListenerBus
  * and StreamingQueryManager. So this bus will dispatch events to registered listeners for only
  * those queries that were started in the associated SparkSession.
  */
+//用于将StreamingQueryListener.Event类型的时间投递到StreamingQueryListeners类型的监听器，此外还会将StreamingQueryListener.Event类型的事件交给SparkListenerBus
 class StreamingQueryListenerBus(sparkListenerBus: LiveListenerBus)
   extends SparkListener with ListenerBus[StreamingQueryListener, StreamingQueryListener.Event] {
 

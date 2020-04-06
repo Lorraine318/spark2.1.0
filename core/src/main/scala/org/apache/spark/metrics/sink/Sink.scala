@@ -17,8 +17,14 @@
 
 package org.apache.spark.metrics.sink
 
+//sink度量
 private[spark] trait Sink {
+  //启动sink
   def start(): Unit
+
+  //停止sink
   def stop(): Unit
+
+  //输出到目的地
   def report(): Unit
 }

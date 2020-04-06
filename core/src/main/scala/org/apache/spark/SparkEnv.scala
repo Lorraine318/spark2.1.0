@@ -53,6 +53,7 @@ import org.apache.spark.util.{RpcUtils, Utils}
  * NOTE: This is not intended for external use. This is exposed for Shark and may be made private
  *       in a future release.
  */
+//SparkEnv运行环境，在生成环境中，往往env需要运行在不同节点的Executor中。，因为由local模式本地执行的需要，所以本地的Executor也需要SparkEnv.
 @DeveloperApi
 class SparkEnv (
     val executorId: String,
@@ -155,18 +156,21 @@ object SparkEnv extends Logging {
   /**
    * Create a SparkEnv for the driver.
    */
+  //sparkContext创建env
   private[spark] def createDriverEnv(
       conf: SparkConf,
       isLocal: Boolean,
       listenerBus: LiveListenerBus,
       numCores: Int,
       mockOutputCommitCoordinator: Option[OutputCommitCoordinator] = None): SparkEnv = {
-    assert(conf.contains(DRIVER_HOST_ADDRESS),
+    assert(conf.contains(DRIVER_HOST_ADDRESS),  //优先级低
       s"${DRIVER_HOST_ADDRESS.key} is not set on the driver!")
-    assert(conf.contains("spark.driver.port"), "spark.driver.port is not set on the driver!")
-    val bindAddress = conf.get(DRIVER_BIND_ADDRESS)
-    val advertiseAddress = conf.get(DRIVER_HOST_ADDRESS)
-    val port = conf.get("spark.driver.port").toInt
+    assert(conf.contains("spark.driver.port"), "spark.driver.port is not set on the driver!") //优先级第二
+    //driver实例的host
+    val bindAddress = conf.get(DRIVER_BIND_ADDRESS) //优先级最高
+    val advertiseAddress = conf.get(DRIVER_HOST_ADDRESS) //driver实例对外宣称的host，可以通过spark.driver.host属性来设置
+    val port = conf.get("spark.driver.port").toInt //driver实例的端口，可以通过spark.driver.port属性来指定
+    //IO加密的密钥  当spark.io.encryption.enabled属性为true时，调用CryptoStreamUtils的createKey来创建密钥
     val ioEncryptionKey = if (conf.get(IO_ENCRYPTION_ENABLED)) {
       Some(CryptoStreamUtils.createKey(conf))
     } else {
@@ -233,6 +237,7 @@ object SparkEnv extends Logging {
       assert(listenerBus != null, "Attempted to create driver SparkEnv with null listener bus!")
     }
 
+    //安全管理器
     val securityManager = new SecurityManager(conf, ioEncryptionKey)
     if (isDriver) {
       securityManager.initializeAuth()
@@ -244,8 +249,8 @@ object SparkEnv extends Logging {
           "wire.")
       }
     }
-
-    val systemName = if (isDriver) driverSystemName else executorSystemName
+    //创建RpcEnv  spark2.xx之后出现的新的组件，用来代替akka
+    val systemName = if (isDriver) driverSystemName else executorSystemName //如果当前应用在driver，那么systemName就是sparkDriver 反之不sparkExecutor
     val rpcEnv = RpcEnv.create(systemName, bindAddress, advertiseAddress, port.getOrElse(-1), conf,
       securityManager, numUsableCores, !isDriver)
 
@@ -345,7 +350,7 @@ object SparkEnv extends Logging {
       new BlockManagerMasterEndpoint(rpcEnv, isLocal, conf, listenerBus)),
       conf, isDriver)
 
-    // NB: blockManager is not valid until initialize() is called later.
+    // sparkContext初始化的时候就会对BlockManager进行初始化
     val blockManager = new BlockManager(executorId, rpcEnv, blockManagerMaster,
       serializerManager, conf, memoryManager, mapOutputTracker, shuffleManager,
       blockTransferService, securityManager, numUsableCores)
@@ -405,6 +410,7 @@ object SparkEnv extends Logging {
    * attributes as a sequence of KV pairs. This is used mainly for SparkListenerEnvironmentUpdate.
    */
   private[spark]
+  //投递环境更新事件
   def environmentDetails(
       conf: SparkConf,
       schedulingMode: String,

@@ -64,7 +64,7 @@ private[netty] class NettyStreamManager(rpcEnv: NettyRpcEnv)
       null
     }
   }
-
+//将自定义的file添加到Driver本地RPCEnv的nettyStreamManager中
   override def addFile(file: File): String = {
     val existingPath = files.putIfAbsent(file.getName, file)
     require(existingPath == null || existingPath == file,
@@ -72,7 +72,7 @@ private[netty] class NettyStreamManager(rpcEnv: NettyRpcEnv)
         s"(old path = $existingPath, new path = $file")
     s"${rpcEnv.address.toSparkURL}/files/${Utils.encodeFileNameToURIRawPath(file.getName())}"
   }
-
+  //将自定义的jar添加到Driver本地RPCEnv的nettyStreamManager中
   override def addJar(file: File): String = {
     val existingPath = jars.putIfAbsent(file.getName, file)
     require(existingPath == null || existingPath == file,

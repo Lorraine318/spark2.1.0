@@ -29,6 +29,7 @@ import org.apache.spark.status.api.v1.StageData
  * up after the stage has ran at least 500ms. If multiple stages run in the same time, the status
  * of them will be combined together, showed in one line.
  */
+//负责将SparkStatusTracker提供的数据打印到控制台上
 private[spark] class ConsoleProgressBar(sc: SparkContext) extends Logging {
   // Carriage return
   private val CR = '\r'

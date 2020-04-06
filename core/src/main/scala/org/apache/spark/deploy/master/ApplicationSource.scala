@@ -21,19 +21,21 @@ import com.codahale.metrics.{Gauge, MetricRegistry}
 
 import org.apache.spark.metrics.source.Source
 
+//Source度量来源  子类
 private[master] class ApplicationSource(val application: ApplicationInfo) extends Source {
   override val metricRegistry = new MetricRegistry()
   override val sourceName = "%s.%s.%s".format("application", application.desc.name,
     System.currentTimeMillis())
 
+  //向自身注册应用状态，包括： Waiting,running,finished,failed,killed,unknown
   metricRegistry.register(MetricRegistry.name("status"), new Gauge[String] {
     override def getValue: String = application.state.toString
   })
-
+  //runtime_ms 运行持续时长
   metricRegistry.register(MetricRegistry.name("runtime_ms"), new Gauge[Long] {
     override def getValue: Long = application.duration
   })
-
+  //core 授权的内核数
   metricRegistry.register(MetricRegistry.name("cores"), new Gauge[Int] {
     override def getValue: Int = application.coresGranted
   })
