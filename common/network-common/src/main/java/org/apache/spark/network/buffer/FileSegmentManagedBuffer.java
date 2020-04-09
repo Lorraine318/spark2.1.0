@@ -37,7 +37,7 @@ import org.apache.spark.network.util.TransportConf;
 /**
  * A {@link ManagedBuffer} backed by a segment in a file.
  */
-//获取一个文件中的一段
+//获取一个文件中的一段  封装了对文件的流处理细节
 public final class FileSegmentManagedBuffer extends ManagedBuffer {
   private final TransportConf conf;
   //所要读取的文件

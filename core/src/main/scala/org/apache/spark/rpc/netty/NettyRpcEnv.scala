@@ -57,8 +57,9 @@ private[netty] class NettyRpcEnv(
   //消息调度器Dispatcher,是有效提高NettyRpcEnv对消息异步处理并最大提升并行处理能力的前提。Dispatcher负责将RPC消息路由到要该对此消息处理的RpcEndpoint端点。
   private val dispatcher: Dispatcher = new Dispatcher(this, numUsableCores)
 
+  //  nettyStreamManager专用于为nettyRpcEnv提供文件服务的能力
   private val streamManager = new NettyStreamManager(this)
-
+  //创建传输上下文
   private val transportContext = new TransportContext(transportConf,
     new NettyRpcHandler(dispatcher, this, streamManager))
 
@@ -70,7 +71,8 @@ private[netty] class NettyRpcEnv(
       java.util.Collections.emptyList[TransportClientBootstrap]
     }
   }
-
+    //创建客户端工厂，是nettyRpCEnv向远端服务发起请求的基础
+  //这里的clientFactory用于常规的发送请求和接收响应
   private val clientFactory = transportContext.createClientFactory(createClientBootstraps())
 
   /**
@@ -81,6 +83,7 @@ private[netty] class NettyRpcEnv(
     * It also allows for different configuration of certain properties, such as the number of
     * connections per peer.
     */
+  //这里的fileDownLoadFacotory则用于文件下载
   @volatile private var fileDownloadFactory: TransportClientFactory = _
 
   val timeoutScheduler = ThreadUtils.newDaemonSingleThreadScheduledExecutor("netty-rpc-env-timeout")
@@ -111,7 +114,7 @@ private[netty] class NettyRpcEnv(
       outbox.stop()
     }
   }
-
+  //创建transportServer
   def startServer(bindAddress: String, port: Int): Unit = {
     val bootstraps: java.util.List[TransportServerBootstrap] =
       if (securityManager.isAuthenticationEnabled()) {
@@ -120,6 +123,7 @@ private[netty] class NettyRpcEnv(
         java.util.Collections.emptyList()
       }
     server = transportContext.createServer(bindAddress, port, bootstraps)
+    //向dispatcher注册RpcEndpointVerifier
     dispatcher.registerRpcEndpoint(
       RpcEndpointVerifier.NAME, new RpcEndpointVerifier(this, dispatcher))
   }
@@ -348,6 +352,7 @@ private[netty] class NettyRpcEnv(
     source
   }
 
+  //fileDownloadFactory所属模块为files  读写线程由spark.files.io.threads控制
   private def downloadClient(host: String, port: Int): TransportClient = {
     if (fileDownloadFactory == null) synchronized {
       if (fileDownloadFactory == null) {
@@ -460,7 +465,7 @@ private[rpc] class NettyRpcEnvFactory extends RpcEnvFactory with Logging {
     val sparkConf = config.conf
     //此实例将用于RPC传输对象的序列化
     val javaSerializerInstance =
-    new JavaSerializer(sparkConf).newInstance().asInstanceOf[JavaSerializerInstance]
+      new JavaSerializer(sparkConf).newInstance().asInstanceOf[JavaSerializerInstance]
     //创建nettyRpcEnv，对内部各个子组件TransportConf, dispatcher,transportContext,transportClientFactory,transportServer的实例化过程
     val nettyEnv =
       new NettyRpcEnv(sparkConf, javaSerializerInstance, config.advertiseAddress,
@@ -651,7 +656,9 @@ private[netty] class NettyRpcHandler(
                         client: TransportClient,
                         message: ByteBuffer,
                         callback: RpcResponseCallback): Unit = {
+    //将ByteBuffer类型的message转换为RequestMessage
     val messageToDispatch = internalReceive(client, message)
+    //将消息转换为RpcMessage后放入Inbox的消息列表
     dispatcher.postRemoteMessage(messageToDispatch, callback)
   }
 
@@ -662,7 +669,9 @@ private[netty] class NettyRpcHandler(
     dispatcher.postOneWayMessage(messageToDispatch)
   }
 
+  //可以将ByteBuffer类型的message转换为RequestMessage
   private def internalReceive(client: TransportClient, message: ByteBuffer): RequestMessage = {
+    //从transportClient中获取远端地址 RpcAddress
     val addr = client.getChannel().remoteAddress().asInstanceOf[InetSocketAddress]
     assert(addr != null)
     val clientAddr = RpcAddress(addr.getHostString, addr.getPort)

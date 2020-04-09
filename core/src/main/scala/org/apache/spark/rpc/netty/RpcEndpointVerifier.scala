@@ -27,6 +27,7 @@ import org.apache.spark.rpc.{RpcCallContext, RpcEndpoint, RpcEnv}
 private[netty] class RpcEndpointVerifier(override val rpcEnv: RpcEnv, dispatcher: Dispatcher)
   extends RpcEndpoint {
 
+  //在messageLoop线程处理RpcEndpointVerifier所关联的Inbox中的消息时，会匹配RpcMessage调用RpcEndpointVerifier的receiveAndReply方法
   override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
     case RpcEndpointVerifier.CheckExistence(name) => context.reply(dispatcher.verify(name))
   }
